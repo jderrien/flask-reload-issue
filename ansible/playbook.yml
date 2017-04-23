@@ -1,0 +1,94 @@
+---
+- hosts: flask-reload-issue
+  become: true
+  become_user: root
+  become_method: sudo
+
+  vars:
+    app_hostname: localhost
+
+    wsgi_processes: 1
+    wsgi_threads: 1
+
+  tasks:
+    - name: Create application directory
+      file:
+        path: /opt/flask-reload-issue
+        owner: '{{ ansible_ssh_user }}'
+        state: directory
+
+    - name: Run apt-get update
+      apt: update_cache=yes cache_valid_time=3600
+
+    - name: Install system packages
+      apt: name={{ item }} state=installed
+      with_items:
+        - apache2
+        - htop
+        - libapache2-mod-wsgi
+        - python
+        - python-pip
+        - python-virtualenv
+        - screen
+        - tmux
+        - tree
+
+    - name: Create venv directory
+      file: path=/opt/flask-reload-issue/venv state=directory
+
+    - name: Install Python dependencies
+      pip:
+        virtualenv: /opt/flask-reload-issue/venv
+        requirements: /opt/flask-reload-issue/requirements.txt
+
+    - name: Copy Apache vhosts
+      template:
+        src: templates/vhost_{{ item }}.j2
+        dest: /etc/apache2/sites-available/{{ item }}
+      with_items:
+        - flask-reload-issue.conf
+      notify:
+        - apache_restart
+
+    - name: Enable Apache vhosts
+      command: a2ensite {{ item }}
+      args:
+        creates: /etc/apache2/sites-enabled/{{ item }}
+      with_items:
+        - flask-reload-issue.conf
+      notify:
+        - apache_restart
+
+    - name: Disable apache vhosts
+      command: a2dissite 000-default.conf
+      args:
+        removes: /etc/apache2/sites-enabled/000-default.conf
+      notify:
+        - apache_restart
+
+    - name: Enable Apache modules
+      apache2_module: name={{ item }} state=present
+      with_items:
+        - wsgi
+      notify:
+        - apache_restart
+
+    - name: Configure ServerName for Apache2
+      copy:
+        content: "ServerName {{ ansible_fqdn }}\n"
+        dest: /etc/apache2/conf-available/servername.conf
+      notify:
+        - apache_restart
+
+    - name: Enable Apache configurations
+      command: a2enconf {{ item }}
+      args:
+        creates: /etc/apache2/conf-enabled/{{ item }}
+      with_items:
+        - servername.conf
+      notify:
+        - apache_restart
+
+  handlers:
+    - name: apache_restart
+      service: name=apache2 state=restarted

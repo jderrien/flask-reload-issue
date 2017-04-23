@@ -1,0 +1,16 @@
+<VirtualHost *:80>
+    ServerName {{ app_hostname }}
+
+    WSGIPassAuthorization On
+    WSGIProcessGroup flask-reload-issue
+    WSGIDaemonProcess flask-reload-issue processes={{ wsgi_processes }} threads={{ wsgi_threads }} python-home=/opt/flask-reload-issue/venv
+    WSGIScriptAlias / /opt/flask-reload-issue/flask_reload_issue.wsgi
+
+    <Directory /opt/flask-reload-issue/>
+        Require all granted
+    </Directory>
+
+    LogLevel info
+
+    CustomLog ${APACHE_LOG_DIR}/flask-reload-issue.log combined
+</VirtualHost>
